@@ -112,6 +112,37 @@ def _format_transcript_text(transcript: dict[str, Any]) -> str:
 
 
 @mcp.tool()
+async def sync_calls(
+    days: int = 365,
+    from_date: str = "",
+    to_date: str = "",
+    max_calls: int = 20000,
+) -> str:
+    """Sync Gong calls and transcripts into the local cache.
+
+    Run this BEFORE search_transcripts to ensure the cache has the data you need.
+    This may take a while for large date ranges. Subsequent syncs are incremental
+    (only fetches calls not already cached).
+
+    Args:
+        days: Number of days to look back (default 365). Ignored if from_date is set.
+        from_date: Start date in ISO-8601 format (e.g. '2024-01-01').
+        to_date: End date in ISO-8601 format (e.g. '2024-12-31'). Defaults to now.
+        max_calls: Maximum calls to sync (default 20000).
+    """
+    fd = from_date or None
+    td = to_date or None
+    if fd and "T" not in fd:
+        fd = f"{fd}T00:00:00Z"
+    if td and "T" not in td:
+        td = f"{td}T23:59:59Z"
+    synced = await _sync_recent_calls(days=days, from_date=fd, to_date=td, max_calls=max_calls)
+    cache = _get_cache()
+    total = len(cache.get_cached_call_ids())
+    return f"Synced {synced} calls ({total} total in cache)."
+
+
+@mcp.tool()
 async def list_calls(
     from_date: str = "",
     to_date: str = "",
@@ -252,6 +283,8 @@ async def search_transcripts(
     """Search across all Gong call transcripts by keyword.
 
     Uses full-text search to find relevant transcript excerpts across calls.
+    Searches the local cache — run sync_calls first to populate it with the
+    desired date range.
 
     Args:
         query: Search keyword or phrase (e.g. 'pricing', 'onboarding', 'competitor').
@@ -262,30 +295,16 @@ async def search_transcripts(
     """
     cache = _get_cache()
 
-    # If cache is empty, sync recent calls first
+    # If cache is empty, do a modest initial sync so there's something to search
     if not cache.has_any_transcripts():
-        synced = await _sync_recent_calls(days=30)
+        synced = await _sync_recent_calls(days=90, max_calls=2000)
         if synced == 0:
-            return "No calls found to search. Try specifying a date range."
+            return "No calls found to search. Run sync_calls with a wider date range, then search again."
 
     results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
-        # Try syncing more data and searching again, but cap the retry
-        # to avoid massive syncs that timeout the MCP client
-        fd = from_date if from_date else None
-        td = to_date if to_date else None
-        if fd and "T" not in fd:
-            fd = f"{fd}T00:00:00Z"
-        if td and "T" not in td:
-            td = f"{td}T23:59:59Z"
-        await _sync_recent_calls(
-            days=90, from_date=fd, to_date=td, max_calls=2000,
-        )
-        results = cache.search_transcripts(query=query, limit=min(limit, 50))
-
-    if not results:
-        return f"No transcript matches found for '{query}'."
+        return f"No transcript matches found for '{query}'. Try running sync_calls with a wider date range first."
 
     # Filter by speaker if specified
     if speaker:
