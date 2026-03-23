@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gong-connector"
+version = "0.1.0"
+description = "MCP server that connects Gong call transcripts and analytics to Claude"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+gong-connector = "gong_connector.server:main"
