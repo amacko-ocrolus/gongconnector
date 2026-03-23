@@ -34,10 +34,10 @@ def _get_cache() -> TranscriptCache:
 
 
 async def _sync_recent_calls(
-    days: int = 120,
+    days: int = 365,
     from_date: str | None = None,
     to_date: str | None = None,
-    max_calls: int = 5000,
+    max_calls: int = 20000,
 ) -> int:
     """Sync recent calls and their transcripts into the cache.
 
@@ -120,7 +120,7 @@ async def list_calls(
     """List recent Gong calls with metadata.
 
     Args:
-        from_date: Start date filter in ISO-8601 format (e.g. '2024-01-01'). Defaults to last 120 days.
+        from_date: Start date filter in ISO-8601 format (e.g. '2024-01-01'). Defaults to last 365 days.
         to_date: End date filter in ISO-8601 format (e.g. '2024-12-31'). Defaults to now.
         limit: Maximum number of calls to return (default 20, max 100).
     """
