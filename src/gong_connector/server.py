@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -12,7 +15,27 @@ from mcp.server.fastmcp import FastMCP
 from .cache import TranscriptCache
 from .gong_client import GongClient, GongClientError
 
-mcp = FastMCP("Gong Connector")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastMCP) -> AsyncIterator[None]:
+    """Sync Gong calls into the cache on server startup."""
+    logger.info("Starting background sync of Gong calls…")
+    asyncio.create_task(_background_sync())
+    yield
+
+
+async def _background_sync() -> None:
+    """Run the initial sync in the background so the server starts immediately."""
+    try:
+        synced = await _sync_recent_calls()
+        logger.info("Background sync complete: %d calls synced.", synced)
+    except Exception:
+        logger.exception("Background sync failed — search may have limited data.")
+
+
+mcp = FastMCP("Gong Connector", lifespan=_lifespan)
 
 # Lazily initialized singletons
 _client: GongClient | None = None
@@ -60,9 +83,9 @@ async def _sync_recent_calls(
     call_ids = [c["metaData"]["id"] for c in calls if c.get("metaData", {}).get("id")]
     missing_ids = [cid for cid in call_ids if cid not in cached_ids]
 
-    # Fetch transcripts in batches of 10
-    for i in range(0, len(missing_ids), 10):
-        batch = missing_ids[i : i + 10]
+    # Fetch transcripts in batches of 50
+    for i in range(0, len(missing_ids), 50):
+        batch = missing_ids[i : i + 50]
         try:
             transcripts = await client.get_transcripts(batch)
             for t in transcripts:
@@ -109,6 +132,37 @@ def _format_transcript_text(transcript: dict[str, Any]) -> str:
 
 
 # ── MCP Tools ───────────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def sync_calls(
+    days: int = 365,
+    from_date: str = "",
+    to_date: str = "",
+    max_calls: int = 20000,
+) -> str:
+    """Manually refresh the local Gong call and transcript cache.
+
+    The cache is automatically populated on server startup. Use this tool to
+    force a refresh or to sync a specific date range. Incremental — only
+    fetches calls not already cached.
+
+    Args:
+        days: Number of days to look back (default 365). Ignored if from_date is set.
+        from_date: Start date in ISO-8601 format (e.g. '2024-01-01').
+        to_date: End date in ISO-8601 format (e.g. '2024-12-31'). Defaults to now.
+        max_calls: Maximum calls to sync (default 20000).
+    """
+    fd = from_date or None
+    td = to_date or None
+    if fd and "T" not in fd:
+        fd = f"{fd}T00:00:00Z"
+    if td and "T" not in td:
+        td = f"{td}T23:59:59Z"
+    synced = await _sync_recent_calls(days=days, from_date=fd, to_date=td, max_calls=max_calls)
+    cache = _get_cache()
+    total = len(cache.get_cached_call_ids())
+    return f"Synced {synced} calls ({total} total in cache)."
 
 
 @mcp.tool()
@@ -252,6 +306,9 @@ async def search_transcripts(
     """Search across all Gong call transcripts by keyword.
 
     Uses full-text search to find relevant transcript excerpts across calls.
+    The cache is automatically populated on server startup (365 days, up to
+    20 000 calls). If the sync is still running, results may be incomplete —
+    try again in a minute.
 
     Args:
         query: Search keyword or phrase (e.g. 'pricing', 'onboarding', 'competitor').
@@ -262,24 +319,13 @@ async def search_transcripts(
     """
     cache = _get_cache()
 
-    # If cache is empty, sync recent calls first
     if not cache.has_any_transcripts():
-        synced = await _sync_recent_calls(days=30)
-        if synced == 0:
-            return "No calls found to search. Try specifying a date range."
+        return (
+            "The transcript cache is still being populated (this happens automatically "
+            "on startup). Please try again in a minute or two."
+        )
 
     results = cache.search_transcripts(query=query, limit=min(limit, 50))
-
-    if not results:
-        # Try syncing more data and searching again
-        fd = from_date if from_date else None
-        td = to_date if to_date else None
-        if fd and "T" not in fd:
-            fd = f"{fd}T00:00:00Z"
-        if td and "T" not in td:
-            td = f"{td}T23:59:59Z"
-        await _sync_recent_calls(from_date=fd, to_date=td)
-        results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
         return f"No transcript matches found for '{query}'."
