@@ -15,3 +15,6 @@ dependencies = [
 
 [project.scripts]
 gong-connector = "gong_connector.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gong_connector"]
