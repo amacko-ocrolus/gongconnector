@@ -34,9 +34,10 @@ def _get_cache() -> TranscriptCache:
 
 
 async def _sync_recent_calls(
-    days: int = 30,
+    days: int = 365,
     from_date: str | None = None,
     to_date: str | None = None,
+    max_calls: int = 20000,
 ) -> int:
     """Sync recent calls and their transcripts into the cache.
 
@@ -51,7 +52,7 @@ async def _sync_recent_calls(
     if not to_date:
         to_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    calls = await client.list_all_calls(from_date=from_date, to_date=to_date)
+    calls = await client.list_all_calls(from_date=from_date, to_date=to_date, max_calls=max_calls)
     cache.upsert_calls(calls)
 
     # Fetch transcripts for calls we don't have cached
@@ -119,7 +120,7 @@ async def list_calls(
     """List recent Gong calls with metadata.
 
     Args:
-        from_date: Start date filter in ISO-8601 format (e.g. '2024-01-01'). Defaults to last 30 days.
+        from_date: Start date filter in ISO-8601 format (e.g. '2024-01-01'). Defaults to last 365 days.
         to_date: End date filter in ISO-8601 format (e.g. '2024-12-31'). Defaults to now.
         limit: Maximum number of calls to return (default 20, max 100).
     """

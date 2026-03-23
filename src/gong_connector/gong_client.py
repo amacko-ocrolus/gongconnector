@@ -141,7 +141,7 @@ class GongClient:
         self,
         from_date: str | None = None,
         to_date: str | None = None,
-        max_calls: int = 500,
+        max_calls: int = 20000,
     ) -> list[dict[str, Any]]:
         """Fetch all calls (paginated) up to max_calls."""
         all_calls: list[dict[str, Any]] = []
