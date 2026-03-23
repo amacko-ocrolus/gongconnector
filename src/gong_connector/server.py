@@ -60,9 +60,9 @@ async def _sync_recent_calls(
     call_ids = [c["metaData"]["id"] for c in calls if c.get("metaData", {}).get("id")]
     missing_ids = [cid for cid in call_ids if cid not in cached_ids]
 
-    # Fetch transcripts in batches of 10
-    for i in range(0, len(missing_ids), 10):
-        batch = missing_ids[i : i + 10]
+    # Fetch transcripts in batches of 50
+    for i in range(0, len(missing_ids), 50):
+        batch = missing_ids[i : i + 50]
         try:
             transcripts = await client.get_transcripts(batch)
             for t in transcripts:
@@ -271,14 +271,17 @@ async def search_transcripts(
     results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
-        # Try syncing more data and searching again
+        # Try syncing more data and searching again, but cap the retry
+        # to avoid massive syncs that timeout the MCP client
         fd = from_date if from_date else None
         td = to_date if to_date else None
         if fd and "T" not in fd:
             fd = f"{fd}T00:00:00Z"
         if td and "T" not in td:
             td = f"{td}T23:59:59Z"
-        await _sync_recent_calls(from_date=fd, to_date=td)
+        await _sync_recent_calls(
+            days=90, from_date=fd, to_date=td, max_calls=2000,
+        )
         results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
