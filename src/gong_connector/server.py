@@ -417,4 +417,22 @@ async def get_call_analytics(call_id: str) -> str:
 
 def main() -> None:
     """Entry point for the MCP server."""
+    import os
+    import sys
+
+    missing = []
+    if not os.environ.get("GONG_API_KEY"):
+        missing.append("GONG_API_KEY")
+    if not os.environ.get("GONG_API_SECRET"):
+        missing.append("GONG_API_SECRET")
+    if missing:
+        print(
+            f"Error: Missing required environment variables: {', '.join(missing)}\n"
+            f"Set them in your Claude MCP config's \"env\" block, or export them:\n"
+            f"  export GONG_API_KEY=your-key\n"
+            f"  export GONG_API_SECRET=your-secret",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     mcp.run()

@@ -4,7 +4,7 @@ MCP server that connects Gong call transcripts and analytics to Claude. Start a 
 
 ## What It Does
 
-Once installed, Claude gets four tools:
+Once connected, Claude gets four tools:
 
 | Tool | Description |
 |------|-------------|
@@ -15,37 +15,24 @@ Once installed, Claude gets four tools:
 
 Transcripts are cached locally (SQLite) for fast repeated searches. Cache refreshes automatically after 1 hour.
 
-## Setup (2 minutes)
+## Quick Start (1 minute, zero install)
 
-### Prerequisites
+You just need two things:
+1. **[uv](https://docs.astral.sh/uv/getting-started/installation/)** installed (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+2. The shared **Gong API key and secret** (ask your team lead)
 
-- Python 3.10+
-- Gong API key and secret (get from your team lead)
+Then add this to your Claude config — **that's it, no other steps**:
 
-### 1. Install
+### Claude Code
 
-```bash
-pip install git+https://github.com/amacko-ocrolus/gongconnector.git
-```
-
-Or clone and install locally:
-
-```bash
-git clone https://github.com/amacko-ocrolus/gongconnector.git
-cd gongconnector
-pip install .
-```
-
-### 2. Add to Claude
-
-**For Claude Code**, add to your MCP settings (`.claude/settings.json` or global settings):
+Add to your MCP settings (`~/.claude/settings.json` or per-project `.claude/settings.json`):
 
 ```json
 {
   "mcpServers": {
     "gong": {
-      "command": "python",
-      "args": ["-m", "gong_connector"],
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/amacko-ocrolus/gongconnector.git", "gong-connector"],
       "env": {
         "GONG_API_KEY": "your-gong-api-key",
         "GONG_API_SECRET": "your-gong-api-secret"
@@ -55,14 +42,18 @@ pip install .
 }
 ```
 
-**For Claude Desktop**, add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+### Claude Desktop
+
+Add to your Claude Desktop config:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "gong": {
-      "command": "python",
-      "args": ["-m", "gong_connector"],
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/amacko-ocrolus/gongconnector.git", "gong-connector"],
       "env": {
         "GONG_API_KEY": "your-gong-api-key",
         "GONG_API_SECRET": "your-gong-api-secret"
@@ -72,9 +63,11 @@ pip install .
 }
 ```
 
-### 3. Use It
+Replace `your-gong-api-key` and `your-gong-api-secret` with the actual credentials, then restart Claude. The connector auto-installs on first use.
 
-Start a new Claude session and ask questions like:
+## Try It Out
+
+Start a new Claude session and ask:
 
 - "What did customers say about pricing in calls last week?"
 - "Show me the transcript from the Acme Corp call on Monday"
@@ -83,6 +76,41 @@ Start a new Claude session and ask questions like:
 - "What were the key topics in call ID abc123?"
 
 Claude will automatically use the Gong tools to find answers.
+
+## Share With Your Team
+
+Copy-paste this to Slack:
+
+> Want to search Gong calls from Claude? Takes 1 minute:
+> 1. Install uv if you don't have it: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+> 2. Add the Gong MCP config to your Claude settings — see the README: https://github.com/amacko-ocrolus/gongconnector
+> 3. Get the Gong API key/secret from [your team lead]
+> That's it — start a Claude session and ask about any Gong call!
+
+## Alternative: Manual Install
+
+If you prefer `pip install` over `uvx`:
+
+```bash
+pip install git+https://github.com/amacko-ocrolus/gongconnector.git
+```
+
+Then use `python` instead of `uvx` in your Claude config:
+
+```json
+{
+  "mcpServers": {
+    "gong": {
+      "command": "python",
+      "args": ["-m", "gong_connector"],
+      "env": {
+        "GONG_API_KEY": "your-gong-api-key",
+        "GONG_API_SECRET": "your-gong-api-secret"
+      }
+    }
+  }
+}
+```
 
 ## Configuration
 
@@ -93,7 +121,7 @@ Claude will automatically use the Gong tools to find answers.
 
 ### Cache
 
-Transcripts are cached at `~/.gong_connector/cache.db`. The cache auto-refreshes after 1 hour. To clear the cache, delete the file:
+Transcripts are cached at `~/.gong_connector/cache.db`. The cache auto-refreshes after 1 hour. To clear the cache:
 
 ```bash
 rm ~/.gong_connector/cache.db
