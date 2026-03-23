@@ -12,10 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from .cache import TranscriptCache
 from .gong_client import GongClient, GongClientError
 
-mcp = FastMCP(
-    "Gong Connector",
-    description="Search and analyze Gong call transcripts, metadata, and analytics",
-)
+mcp = FastMCP("Gong Connector")
 
 # Lazily initialized singletons
 _client: GongClient | None = None
