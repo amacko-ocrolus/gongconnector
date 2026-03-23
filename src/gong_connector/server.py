@@ -333,7 +333,7 @@ async def search_transcripts(
         last_sync = cache.last_sync_time()
         cache_is_stale = last_sync is None or (time.time() - last_sync) > cache.ttl
         if cache_is_stale:
-            await _sync_recent_calls(days=90, max_calls=2000)
+            await _sync_recent_calls(days=365, max_calls=2000)
             results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
