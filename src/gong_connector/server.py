@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -326,6 +327,14 @@ async def search_transcripts(
         )
 
     results = cache.search_transcripts(query=query, limit=min(limit, 50))
+
+    if not results:
+        # If cache might be stale, sync and retry before giving up
+        last_sync = cache.last_sync_time()
+        cache_is_stale = last_sync is None or (time.time() - last_sync) > cache.ttl
+        if cache_is_stale:
+            await _sync_recent_calls(days=90, max_calls=2000)
+            results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
         return f"No transcript matches found for '{query}'."

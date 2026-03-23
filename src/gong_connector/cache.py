@@ -228,6 +228,13 @@ class TranscriptCache:
                 parts.append(f"{speaker}: {text}")
         return "\n".join(parts)
 
+    def last_sync_time(self) -> float | None:
+        """Return the most recent cached_at timestamp from transcripts."""
+        row = self.conn.execute(
+            "SELECT MAX(cached_at) as latest FROM transcripts"
+        ).fetchone()
+        return row["latest"] if row and row["latest"] else None
+
     def has_any_transcripts(self) -> bool:
         row = self.conn.execute(
             "SELECT COUNT(*) as cnt FROM transcripts"
