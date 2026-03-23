@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -12,7 +15,27 @@ from mcp.server.fastmcp import FastMCP
 from .cache import TranscriptCache
 from .gong_client import GongClient, GongClientError
 
-mcp = FastMCP("Gong Connector")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastMCP) -> AsyncIterator[None]:
+    """Sync Gong calls into the cache on server startup."""
+    logger.info("Starting background sync of Gong calls…")
+    asyncio.create_task(_background_sync())
+    yield
+
+
+async def _background_sync() -> None:
+    """Run the initial sync in the background so the server starts immediately."""
+    try:
+        synced = await _sync_recent_calls()
+        logger.info("Background sync complete: %d calls synced.", synced)
+    except Exception:
+        logger.exception("Background sync failed — search may have limited data.")
+
+
+mcp = FastMCP("Gong Connector", lifespan=_lifespan)
 
 # Lazily initialized singletons
 _client: GongClient | None = None
@@ -118,11 +141,11 @@ async def sync_calls(
     to_date: str = "",
     max_calls: int = 20000,
 ) -> str:
-    """Sync Gong calls and transcripts into the local cache.
+    """Manually refresh the local Gong call and transcript cache.
 
-    Run this BEFORE search_transcripts to ensure the cache has the data you need.
-    This may take a while for large date ranges. Subsequent syncs are incremental
-    (only fetches calls not already cached).
+    The cache is automatically populated on server startup. Use this tool to
+    force a refresh or to sync a specific date range. Incremental — only
+    fetches calls not already cached.
 
     Args:
         days: Number of days to look back (default 365). Ignored if from_date is set.
@@ -283,8 +306,9 @@ async def search_transcripts(
     """Search across all Gong call transcripts by keyword.
 
     Uses full-text search to find relevant transcript excerpts across calls.
-    Searches the local cache — run sync_calls first to populate it with the
-    desired date range.
+    The cache is automatically populated on server startup (365 days, up to
+    20 000 calls). If the sync is still running, results may be incomplete —
+    try again in a minute.
 
     Args:
         query: Search keyword or phrase (e.g. 'pricing', 'onboarding', 'competitor').
@@ -295,16 +319,16 @@ async def search_transcripts(
     """
     cache = _get_cache()
 
-    # If cache is empty, do a modest initial sync so there's something to search
     if not cache.has_any_transcripts():
-        synced = await _sync_recent_calls(days=90, max_calls=2000)
-        if synced == 0:
-            return "No calls found to search. Run sync_calls with a wider date range, then search again."
+        return (
+            "The transcript cache is still being populated (this happens automatically "
+            "on startup). Please try again in a minute or two."
+        )
 
     results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
-        return f"No transcript matches found for '{query}'. Try running sync_calls with a wider date range first."
+        return f"No transcript matches found for '{query}'."
 
     # Filter by speaker if specified
     if speaker:
