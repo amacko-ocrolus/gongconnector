@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -27,12 +28,21 @@ async def _lifespan(app: FastMCP) -> AsyncIterator[None]:
 
 
 async def _background_sync() -> None:
-    """Run the initial sync in the background so the server starts immediately."""
+    """Run initial sync then periodically refresh recent calls."""
     try:
         synced = await _sync_recent_calls()
         logger.info("Background sync complete: %d calls synced.", synced)
     except Exception:
         logger.exception("Background sync failed — search may have limited data.")
+
+    # Periodic refresh: every 30 min, sync last 7 days
+    while True:
+        await asyncio.sleep(30 * 60)  # 30 minutes
+        try:
+            synced = await _sync_recent_calls(days=7)
+            logger.info("Periodic sync complete: %d calls refreshed.", synced)
+        except Exception:
+            logger.exception("Periodic sync failed — will retry next cycle.")
 
 
 mcp = FastMCP("Gong Connector", lifespan=_lifespan)
@@ -326,6 +336,14 @@ async def search_transcripts(
         )
 
     results = cache.search_transcripts(query=query, limit=min(limit, 50))
+
+    if not results:
+        # If cache might be stale, sync and retry before giving up
+        last_sync = cache.last_sync_time()
+        cache_is_stale = last_sync is None or (time.time() - last_sync) > cache.ttl
+        if cache_is_stale:
+            await _sync_recent_calls(days=365, max_calls=20000)
+            results = cache.search_transcripts(query=query, limit=min(limit, 50))
 
     if not results:
         return f"No transcript matches found for '{query}'."
